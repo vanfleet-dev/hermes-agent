@@ -289,7 +289,6 @@ export function SessionPanel({ compact = false, info, maxWidth, sid, t }: Sessio
           <Text color={t.color.primary}>{modelLabel}</Text>
           <Text color={t.color.muted}> · </Text>
           <Text color={t.color.muted}>{info.cwd || process.cwd()}</Text>
-          <Text color={t.color.muted}> · /help</Text>
         </Text>
 
         {sid && (
@@ -300,7 +299,7 @@ export function SessionPanel({ compact = false, info, maxWidth, sid, t }: Sessio
 
         {typeof info.update_behind === 'number' && info.update_behind > 0 && (
           <Text color={t.color.warn} wrap="truncate-end">
-            {info.update_behind} behind · {info.update_command || 'hermes update'}
+            {info.update_behind} behind
           </Text>
         )}
       </Box>
