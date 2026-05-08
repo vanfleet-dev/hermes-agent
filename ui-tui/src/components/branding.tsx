@@ -222,24 +222,21 @@ export function SessionPanel({ compact = false, info, sid, t }: SessionPanelProp
 
   if (compact) {
     return (
-      <Box flexDirection="column" marginBottom={1}>
+      <Box marginBottom={1}>
         <Text color={t.color.text} wrap="truncate-end">
           <Text color={t.color.primary}>{modelLabel}</Text>
           <Text color={t.color.muted}> · </Text>
           <Text color={t.color.muted}>{info.cwd || process.cwd()}</Text>
+          {sid && (
+            <>
+              <Text color={t.color.muted}> · session </Text>
+              <Text color={t.color.sessionBorder}>{sid}</Text>
+            </>
+          )}
+          {typeof info.update_behind === 'number' && info.update_behind > 0 && (
+            <Text color={t.color.warn}> · {info.update_behind} behind</Text>
+          )}
         </Text>
-
-        {sid && (
-          <Text color={t.color.muted} wrap="truncate-end">
-            session <Text color={t.color.sessionBorder}>{sid}</Text>
-          </Text>
-        )}
-
-        {typeof info.update_behind === 'number' && info.update_behind > 0 && (
-          <Text color={t.color.warn} wrap="truncate-end">
-            {info.update_behind} behind
-          </Text>
-        )}
       </Box>
     )
   }
