@@ -82,7 +82,11 @@ function CompactBanner({ cols, t }: { cols: number; t: Theme }) {
   )
 }
 
-export function Banner({ maxWidth, t }: { maxWidth?: number; t: Theme }) {
+export function Banner({ compact = false, maxWidth, t }: { compact?: boolean; maxWidth?: number; t: Theme }) {
+  if (compact) {
+    return null
+  }
+
   const term = useStdout().stdout?.columns ?? 80
   const cols = Math.max(1, Math.min(term, maxWidth ?? term))
 
@@ -157,7 +161,7 @@ function CollapseToggle({
 const SKILLS_MAX = 8
 const TOOLSETS_MAX = 8
 
-export function SessionPanel({ info, maxWidth, sid, t }: SessionPanelProps) {
+export function SessionPanel({ compact = false, info, maxWidth, sid, t }: SessionPanelProps) {
   const term = useStdout().stdout?.columns ?? 100
   const cols = Math.max(20, Math.min(term, maxWidth ?? term))
   const heroLines = caduceus(t.color, t.bannerHero || undefined)
@@ -166,6 +170,7 @@ export function SessionPanel({ info, maxWidth, sid, t }: SessionPanelProps) {
   const w = Math.max(20, wide ? cols - leftW - 14 : cols - 12)
   const lineBudget = Math.max(12, w - 2)
   const strip = (s: string) => (s.endsWith('_tools') ? s.slice(0, -6) : s)
+  const modelLabel = info.model.split('/').pop() || info.model
 
   // ── Local collapse state for each section ──
   const [toolsOpen, setToolsOpen] = useState(true)
@@ -277,6 +282,31 @@ export function SessionPanel({ info, maxWidth, sid, t }: SessionPanelProps) {
     )
   }
 
+  if (compact) {
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <Text color={t.color.text} wrap="truncate-end">
+          <Text color={t.color.primary}>{modelLabel}</Text>
+          <Text color={t.color.muted}> · </Text>
+          <Text color={t.color.muted}>{info.cwd || process.cwd()}</Text>
+          <Text color={t.color.muted}> · /help</Text>
+        </Text>
+
+        {sid && (
+          <Text color={t.color.muted} wrap="truncate-end">
+            session <Text color={t.color.sessionBorder}>{sid}</Text>
+          </Text>
+        )}
+
+        {typeof info.update_behind === 'number' && info.update_behind > 0 && (
+          <Text color={t.color.warn} wrap="truncate-end">
+            {info.update_behind} behind · {info.update_command || 'hermes update'}
+          </Text>
+        )}
+      </Box>
+    )
+  }
+
   return (
     <Box borderColor={t.color.border} borderStyle="round" marginBottom={1} paddingX={2} paddingY={1}>
       {wide && (
@@ -285,7 +315,7 @@ export function SessionPanel({ info, maxWidth, sid, t }: SessionPanelProps) {
           <Text />
 
           <Text color={t.color.accent}>
-            {info.model.split('/').pop()}
+            {modelLabel}
             <Text color={t.color.muted}> · Nous Research</Text>
           </Text>
 
@@ -459,6 +489,7 @@ interface PanelProps {
 }
 
 interface SessionPanelProps {
+  compact?: boolean
   info: SessionInfo
   maxWidth?: number
   sid?: string | null

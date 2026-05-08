@@ -112,9 +112,11 @@ const TranscriptPane = memo(function TranscriptPane({
 
               {row.msg.kind === 'intro' ? (
                 <Box flexDirection="column" paddingTop={1}>
-                  <Banner maxWidth={Math.max(1, composer.cols - 2)} t={ui.theme} />
+                  <Banner compact={ui.compact} maxWidth={Math.max(1, composer.cols - 2)} t={ui.theme} />
 
-                  {row.msg.info && <SessionPanel info={row.msg.info} maxWidth={Math.max(1, composer.cols - 2)} sid={ui.sid} t={ui.theme} />}
+                  {row.msg.info && (
+                    <SessionPanel compact={ui.compact} info={row.msg.info} maxWidth={Math.max(1, composer.cols - 2)} sid={ui.sid} t={ui.theme} />
+                  )}
                 </Box>
               ) : row.msg.kind === 'panel' && row.msg.panelData ? (
                 <Panel sections={row.msg.panelData.sections} t={ui.theme} title={row.msg.panelData.title} />
