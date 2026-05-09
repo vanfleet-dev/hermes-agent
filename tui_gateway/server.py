@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 from hermes_constants import get_hermes_home
 from hermes_cli.env_loader import load_hermes_dotenv
+from agent.account_usage import codex_quota_summary, fetch_account_usage
 from utils import is_truthy_value
 from tui_gateway.transport import (
     StdioTransport,
@@ -126,6 +127,10 @@ _cfg_lock = threading.Lock()
 _cfg_cache: dict | None = None
 _cfg_mtime: float | None = None
 _cfg_path = None
+_CODEX_QUOTA_CACHE: dict[str, Any] = {}
+_CODEX_QUOTA_CACHE_LOCK = threading.Lock()
+_CODEX_QUOTA_REFRESHING = False
+_CODEX_QUOTA_TTL_S = 90.0
 try:
     _slash_timeout = float(os.environ.get("HERMES_TUI_SLASH_TIMEOUT_S") or "45")
 except (ValueError, TypeError):
@@ -1272,6 +1277,70 @@ def _sync_session_key_after_compress(
             pass
 
 
+def _utc_now() -> float:
+    return time.time()
+
+
+def _refresh_codex_quota_cache() -> None:
+    global _CODEX_QUOTA_REFRESHING
+
+    try:
+        summary = codex_quota_summary(fetch_account_usage("openai-codex"))
+    except Exception:
+        summary = None
+
+    with _CODEX_QUOTA_CACHE_LOCK:
+        if summary:
+            _CODEX_QUOTA_CACHE.clear()
+            _CODEX_QUOTA_CACHE.update({"data": dict(summary), "fetched_at": _utc_now()})
+        _CODEX_QUOTA_REFRESHING = False
+
+
+def _schedule_codex_quota_refresh() -> None:
+    global _CODEX_QUOTA_REFRESHING
+
+    with _CODEX_QUOTA_CACHE_LOCK:
+        if _CODEX_QUOTA_REFRESHING:
+            return
+        _CODEX_QUOTA_REFRESHING = True
+
+    threading.Thread(
+        target=_refresh_codex_quota_cache,
+        daemon=True,
+        name="codex-quota-refresh",
+    ).start()
+
+
+def _get_codex_quota_usage() -> Optional[dict[str, Any]]:
+    now = _utc_now()
+    with _CODEX_QUOTA_CACHE_LOCK:
+        cached = dict(_CODEX_QUOTA_CACHE)
+
+    cached_data = cached.get("data") if isinstance(cached.get("data"), dict) else None
+    fetched_at = cached.get("fetched_at") if isinstance(cached.get("fetched_at"), (int, float)) else None
+    if cached_data and fetched_at is not None and (now - float(fetched_at)) < _CODEX_QUOTA_TTL_S:
+        return dict(cached_data)
+
+    if cached_data:
+        stale = dict(cached_data)
+        stale["stale"] = True
+        _schedule_codex_quota_refresh()
+        return stale
+
+    try:
+        summary = codex_quota_summary(fetch_account_usage("openai-codex"))
+    except Exception:
+        summary = None
+
+    if summary:
+        with _CODEX_QUOTA_CACHE_LOCK:
+            _CODEX_QUOTA_CACHE.clear()
+            _CODEX_QUOTA_CACHE.update({"data": dict(summary), "fetched_at": now})
+        return summary
+
+    return None
+
+
 def _get_usage(agent) -> dict:
     g = lambda k, fb=None: getattr(agent, k, 0) or (getattr(agent, fb, 0) if fb else 0)
     usage = {
@@ -1314,6 +1383,9 @@ def _get_usage(agent) -> dict:
             usage["cost_usd"] = float(cost.amount_usd)
     except Exception:
         pass
+    codex_quota = _get_codex_quota_usage()
+    if codex_quota:
+        usage["codex_quota"] = codex_quota
     return usage
 
 

@@ -164,6 +164,15 @@ export interface SessionUsageResponse {
   cache_read?: number
   cache_write?: number
   calls?: number
+  codex_quota?: {
+    plan?: string
+    session_reset_at?: number
+    session_used_percent?: number
+    stale?: boolean
+    state?: 'blackout' | 'green' | 'red' | 'yellow'
+    weekly_reset_at?: number
+    weekly_used_percent?: number
+  }
   compressions?: number
   context_max?: number
   context_percent?: number

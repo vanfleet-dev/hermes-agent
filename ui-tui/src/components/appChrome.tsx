@@ -150,6 +150,58 @@ function ctxBar(pct: number | undefined, w = 10) {
   return '█'.repeat(filled) + '░'.repeat(w - filled)
 }
 
+function fmtCodexCooldown(resetAtSeconds: number | undefined, nowMs: number) {
+  if (typeof resetAtSeconds !== 'number') {
+    return 'soon'
+  }
+
+  const remainingSeconds = Math.max(0, Math.round(resetAtSeconds - nowMs / 1000))
+  const hours = Math.floor(remainingSeconds / 3600)
+  const minutes = Math.floor((remainingSeconds % 3600) / 60)
+
+  if (hours > 0) {
+    return `${hours}h${minutes > 0 ? ` ${minutes}m` : ''}`
+  }
+
+  return `${Math.max(1, minutes)}m`
+}
+
+export function formatCodexQuotaCompact(usage: Usage['codex_quota'], nowMs = Date.now()) {
+  if (!usage) {
+    return ''
+  }
+
+  if (usage.state === 'blackout') {
+    const cooldown = fmtCodexCooldown(usage.session_reset_at, nowMs)
+    return `GPT CD:${cooldown}`
+  }
+
+  if (typeof usage.session_used_percent !== 'number' && typeof usage.weekly_used_percent !== 'number') {
+    return ''
+  }
+
+  const session = typeof usage.session_used_percent === 'number' ? `${Math.round(usage.session_used_percent)}%` : '--'
+  const weekly = typeof usage.weekly_used_percent === 'number' ? `${Math.round(usage.weekly_used_percent)}%` : '--'
+  const stale = usage.stale ? '~' : ''
+
+  return `GPT 5H:${session} WK:${weekly}${stale}`
+}
+
+function codexQuotaColor(usage: Usage['codex_quota'], t: Theme) {
+  switch (usage?.state) {
+    case 'blackout':
+      return t.color.statusCritical
+    case 'red':
+      return t.color.statusBad
+    case 'yellow':
+      return t.color.statusWarn
+    case 'green':
+      return t.color.statusGood
+    default:
+      return t.color.muted
+  }
+}
+
 function SpawnHud({ t }: { t: Theme }) {
   // Tight HUD that only appears when the session is actually fanning out.
   // Colour escalates to warn/error as depth or concurrency approaches the cap.
@@ -289,6 +341,8 @@ export function StatusRule({
 }: StatusRuleProps) {
   const pct = usage.context_percent
   const barColor = ctxBarColor(pct, t)
+  const codexLabel = formatCodexQuotaCompact(usage.codex_quota)
+  const codexColor = codexQuotaColor(usage.codex_quota, t)
 
   const ctxLabel = usage.context_max
     ? `${fmtK(usage.context_used ?? 0)}/${fmtK(usage.context_max)}`
@@ -310,6 +364,7 @@ export function StatusRule({
             <Text color={statusColor}>{status}</Text>
           )}
           <Text color={t.color.muted}> │ {modelLabel(model, modelReasoningEffort, modelFast)}</Text>
+          {codexLabel ? <Text color={codexColor}> │ {codexLabel}</Text> : null}
           {ctxLabel ? <Text color={t.color.muted}> │ {ctxLabel}</Text> : null}
           {bar ? (
             <Text color={t.color.muted}>

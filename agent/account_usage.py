@@ -113,6 +113,54 @@ def render_account_usage_lines(snapshot: Optional[AccountUsageSnapshot], *, mark
     return lines
 
 
+def codex_quota_summary(snapshot: Optional[AccountUsageSnapshot]) -> Optional[dict[str, Any]]:
+    if not snapshot or str(snapshot.provider or "").strip().lower() != "openai-codex":
+        return None
+
+    summary: dict[str, Any] = {}
+    if snapshot.plan:
+        summary["plan"] = snapshot.plan
+
+    for window in snapshot.windows:
+        label = str(window.label or "").strip().lower()
+        if label == "session":
+            if window.used_percent is not None:
+                summary["session_used_percent"] = float(window.used_percent)
+            if window.reset_at is not None:
+                summary["session_reset_at"] = int(window.reset_at.timestamp())
+        elif label == "weekly":
+            if window.used_percent is not None:
+                summary["weekly_used_percent"] = float(window.used_percent)
+            if window.reset_at is not None:
+                summary["weekly_reset_at"] = int(window.reset_at.timestamp())
+
+    percent_values = [
+        float(value)
+        for value in (summary.get("session_used_percent"), summary.get("weekly_used_percent"))
+        if isinstance(value, (int, float))
+    ]
+    if percent_values:
+        session_used = summary.get("session_used_percent")
+        session_reset_at = summary.get("session_reset_at")
+        if (
+            isinstance(session_used, (int, float))
+            and float(session_used) >= 100.0
+            and isinstance(session_reset_at, int)
+            and session_reset_at > int(_utc_now().timestamp())
+        ):
+            summary["state"] = "blackout"
+        else:
+            peak_used = max(percent_values)
+            if peak_used >= 85:
+                summary["state"] = "red"
+            elif peak_used >= 65:
+                summary["state"] = "yellow"
+            else:
+                summary["state"] = "green"
+
+    return summary or None
+
+
 def _resolve_codex_usage_url(base_url: str) -> str:
     normalized = (base_url or "").strip().rstrip("/")
     if not normalized:

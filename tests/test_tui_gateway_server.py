@@ -2525,6 +2525,35 @@ def test_session_info_includes_mcp_servers(monkeypatch):
     assert info["mcp_servers"] == fake_status
 
 
+def test_get_usage_includes_cached_codex_quota(monkeypatch):
+    snapshot = types.SimpleNamespace(
+        provider="openai-codex",
+        plan="Pro",
+        windows=(
+            types.SimpleNamespace(label="Session", used_percent=23.0, reset_at=None),
+            types.SimpleNamespace(label="Weekly", used_percent=7.0, reset_at=None),
+        ),
+    )
+    monkeypatch.setattr(server, "fetch_account_usage", lambda provider, base_url=None, api_key=None: snapshot)
+    monkeypatch.setattr(server, "codex_quota_summary", lambda snap: {
+        "plan": "Pro",
+        "session_used_percent": 23.0,
+        "state": "green",
+        "weekly_used_percent": 7.0,
+    })
+    monkeypatch.setattr(server, "_utc_now", lambda: 1_900_000_000.0)
+    server._CODEX_QUOTA_CACHE.clear()
+
+    usage = server._get_usage(types.SimpleNamespace(provider="anthropic", model="claude-sonnet", base_url=None))
+
+    assert usage["codex_quota"] == {
+        "plan": "Pro",
+        "session_used_percent": 23.0,
+        "state": "green",
+        "weekly_used_percent": 7.0,
+    }
+
+
 # ---------------------------------------------------------------------------
 # History-mutating commands must reject while session.running is True.
 # Without these guards, prompt.submit's post-run history write either

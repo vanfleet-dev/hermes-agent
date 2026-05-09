@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from agent.account_usage import (
     AccountUsageSnapshot,
     AccountUsageWindow,
+    codex_quota_summary,
     fetch_account_usage,
     render_account_usage_lines,
 )
@@ -116,6 +117,57 @@ def test_render_account_usage_lines_includes_reset_and_provider():
     assert "openai-codex (Pro)" in lines[1]
     assert "Session: 75% remaining (25% used)" in lines[2]
     assert "Credits balance: $9.99" in lines[3]
+
+
+def test_codex_quota_summary_maps_windows_and_state():
+    snapshot = AccountUsageSnapshot(
+        provider="openai-codex",
+        source="usage_api",
+        fetched_at=datetime.fromtimestamp(1_900_000_000, tz=timezone.utc),
+        plan="Pro",
+        windows=(
+            AccountUsageWindow(
+                label="Session",
+                used_percent=66,
+                reset_at=datetime.fromtimestamp(1_900_018_000, tz=timezone.utc),
+            ),
+            AccountUsageWindow(
+                label="Weekly",
+                used_percent=12,
+                reset_at=datetime.fromtimestamp(1_900_604_800, tz=timezone.utc),
+            ),
+        ),
+    )
+
+    summary = codex_quota_summary(snapshot)
+
+    assert summary == {
+        "plan": "Pro",
+        "session_reset_at": 1_900_018_000,
+        "session_used_percent": 66.0,
+        "state": "yellow",
+        "weekly_reset_at": 1_900_604_800,
+        "weekly_used_percent": 12.0,
+    }
+
+
+def test_codex_quota_summary_marks_active_cooldown_blackout(monkeypatch):
+    monkeypatch.setattr("agent.account_usage._utc_now", lambda: datetime.fromtimestamp(1_900_000_000, tz=timezone.utc))
+    snapshot = AccountUsageSnapshot(
+        provider="openai-codex",
+        source="usage_api",
+        fetched_at=datetime.fromtimestamp(1_900_000_000, tz=timezone.utc),
+        plan="Pro",
+        windows=(
+            AccountUsageWindow(
+                label="Session",
+                used_percent=100,
+                reset_at=datetime.fromtimestamp(1_900_018_000, tz=timezone.utc),
+            ),
+        ),
+    )
+
+    assert codex_quota_summary(snapshot)["state"] == "blackout"
 
 
 def test_fetch_account_usage_openrouter_uses_limit_remaining_and_ignores_deprecated_rate_limit(monkeypatch):
