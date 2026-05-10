@@ -23,7 +23,9 @@ const HEART_COLORS = ['#ff5fa2', '#ff4d6d']
 // Keep verb segment width stable so status-bar content to the right doesn't
 // jitter when the ticker rotates between short/long verbs.
 export const VERB_PAD_LEN = VERBS.reduce((max, v) => Math.max(max, v.length), 0) + 1 // + ellipsis
+export const DURATION_PAD_LEN = 7 // e.g. "  9s", "1m 05s", "59m 59s"
 export const padVerb = (verb: string) => `${verb}…`.padEnd(VERB_PAD_LEN, ' ')
+export const padTickerDuration = (ms: number) => fmtDuration(ms).padStart(DURATION_PAD_LEN, ' ')
 
 // Compact alternates for the `emoji` and `ascii` indicator styles.
 // Each entry is a fixed-width (display-width) glyph.
@@ -112,7 +114,7 @@ function FaceTicker({ color, startedAt }: { color: string; startedAt?: null | nu
   // verb segment is hidden (e.g. `unicode` spinner style).  When the verb
   // IS shown, its trailing padding already provides the gap, so the extra
   // space is harmless.
-  const durationSegment = startedAt ? ` · ${fmtDuration(now - startedAt)}` : ''
+  const durationSegment = startedAt ? ` · ${padTickerDuration(now - startedAt)}` : ''
 
   return (
     <Text color={color}>
@@ -218,6 +220,38 @@ function codexQuotaColor(usage: Usage['codex_quota'], t: Theme) {
       return t.color.statusWarn
     case 'green':
       return t.color.statusGood
+    default:
+      return t.color.muted
+  }
+}
+
+export function formatStackHealthCompact(health: Usage['stack_health']) {
+  if (!health?.status) {
+    return ''
+  }
+
+  const stale = health.stale ? '~' : ''
+
+  switch (health.status) {
+    case 'healthy':
+      return `● SRV OK${stale}`
+    case 'degraded':
+      return `● SRV DEG${stale}`
+    case 'unhealthy':
+      return `● SRV BAD${stale}`
+    default:
+      return ''
+  }
+}
+
+function stackHealthColor(health: Usage['stack_health'], t: Theme) {
+  switch (health?.status) {
+    case 'healthy':
+      return health.stale ? t.color.statusWarn : t.color.statusGood
+    case 'degraded':
+      return t.color.statusWarn
+    case 'unhealthy':
+      return t.color.statusBad
     default:
       return t.color.muted
   }
@@ -366,6 +400,8 @@ export function StatusRule({
   const barColor = ctxBarColor(pct, t)
   const codexLabel = formatCodexQuotaCompact(usage.codex_quota)
   const codexColor = codexQuotaColor(usage.codex_quota, t)
+  const stackHealthLabel = formatStackHealthCompact(usage.stack_health)
+  const stackHealthColorValue = stackHealthColor(usage.stack_health, t)
 
   const ctxLabel = usage.context_max
     ? `${fmtK(usage.context_used ?? 0)}/${fmtK(usage.context_max)}`
@@ -408,6 +444,12 @@ export function StatusRule({
           {' │ '}
           {modelLabel(model, modelReasoningEffort, modelFast)}
         </Text>
+        {stackHealthLabel ? (
+          <Text color={stackHealthColorValue} wrap="truncate-end">
+            {' │ '}
+            {stackHealthLabel}
+          </Text>
+        ) : null}
         {codexLabel ? (
           <Text color={codexColor} wrap="truncate-end">
             {' │ '}

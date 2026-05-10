@@ -172,6 +172,14 @@ export interface CodexQuota {
   weekly_used_percent?: number
 }
 
+export interface StackHealth {
+  checked_at?: string
+  checked_at_epoch?: number
+  stale?: boolean
+  status?: 'degraded' | 'healthy' | 'unhealthy'
+  summary?: string
+}
+
 export interface Usage {
   calls: number
   codex_quota?: CodexQuota
@@ -184,6 +192,7 @@ export interface Usage {
   input: number
   output: number
   reasoning?: number
+  stack_health?: StackHealth
   total: number
 }
 
