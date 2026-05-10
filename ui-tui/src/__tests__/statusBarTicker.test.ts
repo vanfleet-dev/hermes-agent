@@ -4,6 +4,7 @@ import {
   DURATION_PAD_LEN,
   VERB_PAD_LEN,
   formatCodexQuotaCompact,
+  formatStackHealthCompact,
   padTickerDuration,
   padVerb
 } from '../components/appChrome.js'
@@ -53,5 +54,15 @@ describe('formatCodexQuotaCompact', () => {
         600_000
       )
     ).toBe('GPT CD:20m')
+  })
+})
+
+describe('formatStackHealthCompact', () => {
+  it('renders healthy stack state compactly', () => {
+    expect(formatStackHealthCompact({ status: 'healthy' })).toBe('● SRV OK')
+  })
+
+  it('marks stale stack state with a suffix', () => {
+    expect(formatStackHealthCompact({ stale: true, status: 'degraded' })).toBe('● SRV DEG~')
   })
 })

@@ -131,6 +131,11 @@ _CODEX_QUOTA_CACHE: dict[str, Any] = {}
 _CODEX_QUOTA_CACHE_LOCK = threading.Lock()
 _CODEX_QUOTA_REFRESHING = False
 _CODEX_QUOTA_TTL_S = 90.0
+_STACK_HEALTH_CACHE: dict[str, Any] = {}
+_STACK_HEALTH_CACHE_LOCK = threading.Lock()
+_STACK_HEALTH_TTL_S = 5.0
+_STACK_HEALTH_FILE = os.environ.get("HERMES_STACK_HEALTH_FILE") or "/state/monitoring/hermes-stack-health.json"
+_STACK_HEALTH_STALE_S = 300.0
 try:
     _slash_timeout = float(os.environ.get("HERMES_TUI_SLASH_TIMEOUT_S") or "45")
 except (ValueError, TypeError):
@@ -665,7 +670,7 @@ def _load_cfg() -> dict:
             if _cfg_cache is not None and _cfg_mtime == mtime and _cfg_path == p:
                 return copy.deepcopy(_cfg_cache)
         if p.exists():
-            with open(p, encoding="utf-8") as f:
+            with open(p) as f:
                 data = yaml.safe_load(f) or {}
         else:
             data = {}
@@ -684,7 +689,7 @@ def _save_cfg(cfg: dict):
     import yaml
 
     path = _hermes_home / "config.yaml"
-    with open(path, "w", encoding="utf-8") as f:
+    with open(path, "w") as f:
         yaml.safe_dump(cfg, f)
     with _cfg_lock:
         _cfg_cache = copy.deepcopy(cfg)
@@ -1341,6 +1346,47 @@ def _get_codex_quota_usage() -> Optional[dict[str, Any]]:
     return None
 
 
+def _get_stack_health_usage() -> Optional[dict[str, Any]]:
+    now = _utc_now()
+    with _STACK_HEALTH_CACHE_LOCK:
+        cached = dict(_STACK_HEALTH_CACHE)
+    fetched_at = cached.get("fetched_at")
+    if cached.get("data") is not None and isinstance(fetched_at, (int, float)) and (now - float(fetched_at)) < _STACK_HEALTH_TTL_S:
+        return dict(cached.get("data") or {})
+
+    path = Path(_STACK_HEALTH_FILE)
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    status = str(payload.get("status", "") or "").strip().lower()
+    if status not in {"healthy", "degraded", "unhealthy"}:
+        return None
+    checked_at_epoch = payload.get("checked_at_epoch")
+    try:
+        checked_at_epoch_f = float(checked_at_epoch) if checked_at_epoch is not None else None
+    except Exception:
+        checked_at_epoch_f = None
+    stale = False
+    if checked_at_epoch_f is not None and (now - checked_at_epoch_f) > _STACK_HEALTH_STALE_S:
+        stale = True
+    data = {
+        "status": status,
+        "summary": str(payload.get("summary", "") or "").strip(),
+        "checked_at": payload.get("checked_at"),
+        "checked_at_epoch": checked_at_epoch_f,
+        "stale": stale,
+    }
+    with _STACK_HEALTH_CACHE_LOCK:
+        _STACK_HEALTH_CACHE.clear()
+        _STACK_HEALTH_CACHE.update({"data": dict(data), "fetched_at": now})
+    return data
+
+
 def _get_usage(agent) -> dict:
     g = lambda k, fb=None: getattr(agent, k, 0) or (getattr(agent, fb, 0) if fb else 0)
     usage = {
@@ -1386,6 +1432,9 @@ def _get_usage(agent) -> dict:
     codex_quota = _get_codex_quota_usage()
     if codex_quota:
         usage["codex_quota"] = codex_quota
+    stack_health = _get_stack_health_usage()
+    if stack_health:
+        usage["stack_health"] = stack_health
     return usage
 
 
@@ -2685,7 +2734,7 @@ def _(rid, params: dict) -> dict:
         f"hermes_conversation_{_time.strftime('%Y%m%d_%H%M%S')}.json"
     )
     try:
-        with open(filename, "w", encoding="utf-8") as f:
+        with open(filename, "w") as f:
             json.dump(
                 {
                     "model": getattr(session["agent"], "model", ""),

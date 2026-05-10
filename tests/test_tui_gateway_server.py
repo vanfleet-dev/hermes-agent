@@ -2554,6 +2554,43 @@ def test_get_usage_includes_cached_codex_quota(monkeypatch):
     }
 
 
+def test_get_stack_health_usage_reads_health_file(tmp_path, monkeypatch):
+    health_file = tmp_path / "stack-health.json"
+    health_file.write_text(
+        json.dumps(
+            {
+                "status": "degraded",
+                "summary": "Degraded: restic",
+                "checked_at": "2026-05-10T03:00:00+00:00",
+                "checked_at_epoch": 1_900_000_000.0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(server, "_STACK_HEALTH_FILE", str(health_file))
+    monkeypatch.setattr(server, "_utc_now", lambda: 1_900_000_120.0)
+    server._STACK_HEALTH_CACHE.clear()
+
+    usage = server._get_stack_health_usage()
+
+    assert usage == {
+        "status": "degraded",
+        "summary": "Degraded: restic",
+        "checked_at": "2026-05-10T03:00:00+00:00",
+        "checked_at_epoch": 1_900_000_000.0,
+        "stale": False,
+    }
+
+
+def test_get_usage_includes_stack_health(monkeypatch):
+    monkeypatch.setattr(server, "_get_codex_quota_usage", lambda: None)
+    monkeypatch.setattr(server, "_get_stack_health_usage", lambda: {"status": "healthy", "summary": "All monitored services healthy"})
+
+    usage = server._get_usage(types.SimpleNamespace(provider="anthropic", model="claude-sonnet", base_url=None))
+
+    assert usage["stack_health"] == {"status": "healthy", "summary": "All monitored services healthy"}
+
+
 # ---------------------------------------------------------------------------
 # History-mutating commands must reject while session.running is True.
 # Without these guards, prompt.submit's post-run history write either

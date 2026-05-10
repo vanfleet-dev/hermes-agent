@@ -182,6 +182,13 @@ export interface SessionUsageResponse {
   input?: number
   model?: string
   output?: number
+  stack_health?: {
+    checked_at?: string
+    checked_at_epoch?: number
+    stale?: boolean
+    status?: 'degraded' | 'healthy' | 'unhealthy'
+    summary?: string
+  }
   total?: number
 }
 
