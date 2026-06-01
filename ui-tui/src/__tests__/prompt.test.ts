@@ -7,11 +7,8 @@ describe('composerPromptText', () => {
     expect(composerPromptText('❯', 'coder', true)).toBe('$')
   })
 
-  it('prefixes named profiles onto the normal prompt', () => {
-    expect(composerPromptText('❯', 'coder')).toBe('coder ❯')
-  })
-
-  it('does not prefix default or custom profiles', () => {
+  it('does not prefix profile names onto the normal prompt', () => {
+    expect(composerPromptText('❯', 'coder')).toBe('❯')
     expect(composerPromptText('❯', 'default')).toBe('❯')
     expect(composerPromptText('❯', 'custom')).toBe('❯')
     expect(composerPromptText('❯')).toBe('❯')
@@ -21,11 +18,8 @@ describe('composerPromptText', () => {
     expect(composerPromptText('❯', 'coder', false, true, 50)).toBe('>')
   })
 
-  it('keeps profile prefix suppressed on narrow Termux widths', () => {
+  it('suppresses profile prefixes on Termux widths', () => {
     expect(composerPromptText('❯', 'upstr', false, true, 72)).toBe('>')
-  })
-
-  it('allows profile prefix on very wide Termux panes', () => {
-    expect(composerPromptText('❯', 'upstr', false, true, 120)).toBe('upstr >')
+    expect(composerPromptText('❯', 'upstr', false, true, 120)).toBe('>')
   })
 })
