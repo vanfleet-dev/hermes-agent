@@ -145,10 +145,6 @@ function ctxBarColor(pct: number | undefined, t: Theme) {
   return t.color.statusGood
 }
 
-function statusSessionCountLabel(count: number) {
-  return `${count} ${count === 1 ? 'session' : 'sessions'}`
-}
-
 function ctxBar(pct: number | undefined, w = 10) {
   const p = Math.max(0, Math.min(100, pct ?? 0))
   const filled = Math.round((p / 100) * w)
@@ -255,6 +251,10 @@ function stackHealthColor(health: Usage['stack_health'], t: Theme) {
     default:
       return t.color.muted
   }
+}
+
+function isPrimaryProfile(profileName?: null | string) {
+  return !profileName || profileName === 'default'
 }
 
 function SpawnHud({ t }: { t: Theme }) {
@@ -388,20 +388,19 @@ export function StatusRule({
   modelReasoningEffort,
   usage,
   bgCount,
-  liveSessionCount,
   sessionStartedAt,
   showCost,
   turnStartedAt,
-  voiceLabel,
-  onSessionCountClick,
+  profileName,
   t
 }: StatusRuleProps) {
   const pct = usage.context_percent
   const barColor = ctxBarColor(pct, t)
-  const codexLabel = formatCodexQuotaCompact(usage.codex_quota)
+  const codexLabel = isPrimaryProfile(profileName) ? formatCodexQuotaCompact(usage.codex_quota) : ''
   const codexColor = codexQuotaColor(usage.codex_quota, t)
   const stackHealthLabel = formatStackHealthCompact(usage.stack_health)
   const stackHealthColorValue = stackHealthColor(usage.stack_health, t)
+  const showStatus = busy || status !== 'ready'
 
   const ctxLabel = usage.context_max
     ? `${fmtK(usage.context_used ?? 0)}/${fmtK(usage.context_max)}`
@@ -411,21 +410,6 @@ export function StatusRule({
 
   const bar = usage.context_max ? ctxBar(pct) : ''
   const { leftWidth, rightWidth, separatorWidth } = statusRuleWidths(cols, cwdLabel)
-  const sessionCountText = liveSessionCount > 0 ? statusSessionCountLabel(liveSessionCount) : ''
-  const handleSessionCountClick = (event: { stopImmediatePropagation?: () => void }) => {
-    event.stopImmediatePropagation?.()
-    onSessionCountClick?.()
-  }
-
-  const sessionCountNode = sessionCountText ? (
-    onSessionCountClick ? (
-      <Box flexShrink={0} onClick={handleSessionCountClick}>
-        <Text color={t.color.accent}> │ {sessionCountText}</Text>
-      </Box>
-    ) : (
-      <Text color={t.color.muted}> │ {sessionCountText}</Text>
-    )
-  ) : null
 
   return (
     <Box height={1}>
@@ -433,15 +417,17 @@ export function StatusRule({
         <Text color={t.color.border} wrap="truncate-end">
           {'─ '}
         </Text>
-        {busy ? (
-          <FaceTicker color={statusColor} startedAt={turnStartedAt} />
-        ) : (
-          <Text color={statusColor} wrap="truncate-end">
-            {status}
-          </Text>
-        )}
+        {showStatus ? (
+          busy ? (
+            <FaceTicker color={statusColor} startedAt={turnStartedAt} />
+          ) : (
+            <Text color={statusColor} wrap="truncate-end">
+              {status}
+            </Text>
+          )
+        ) : null}
         <Text color={t.color.muted} wrap="truncate-end">
-          {' │ '}
+          {showStatus ? ' │ ' : ''}
           {modelLabel(model, modelReasoningEffort, modelFast)}
         </Text>
         {stackHealthLabel ? (
@@ -474,29 +460,7 @@ export function StatusRule({
             <SessionDuration startedAt={sessionStartedAt} />
           </Text>
         ) : null}
-        {typeof usage.compressions === 'number' && usage.compressions > 0 ? (
-          <Text color={t.color.muted} wrap="truncate-end">
-            {' │ '}
-            <Text
-              color={usage.compressions >= 10 ? t.color.error : usage.compressions >= 5 ? t.color.warn : t.color.muted}
-            >
-              cmp {usage.compressions}
-            </Text>
-          </Text>
-        ) : null}
         <SpawnHud t={t} />
-        {voiceLabel ? (
-          <Text
-            color={
-              voiceLabel.startsWith('●') ? t.color.error : voiceLabel.startsWith('◉') ? t.color.warn : t.color.muted
-            }
-            wrap="truncate-end"
-          >
-            {' │ '}
-            {voiceLabel}
-          </Text>
-        ) : null}
-        {sessionCountNode}
         {bgCount > 0 ? (
           <Text color={t.color.muted} wrap="truncate-end">
             {' │ '}
@@ -625,13 +589,13 @@ export function TranscriptScrollbar({ scrollRef, t }: TranscriptScrollbarProps) 
 
 interface StatusRuleProps {
   bgCount: number
-  liveSessionCount: number
   busy: boolean
   cols: number
   cwdLabel: string
   model: string
   modelFast?: boolean
   modelReasoningEffort?: string
+  profileName?: null | string
   sessionStartedAt?: null | number
   showCost: boolean
   status: string
@@ -639,8 +603,6 @@ interface StatusRuleProps {
   t: Theme
   turnStartedAt?: null | number
   usage: Usage
-  voiceLabel?: string
-  onSessionCountClick?: () => void
 }
 
 interface StickyPromptTrackerProps {

@@ -6,6 +6,7 @@ import { turnController } from '../app/turnController.js'
 import { getTurnState, resetTurnState } from '../app/turnStore.js'
 import { getUiState, patchUiState, resetUiState } from '../app/uiStore.js'
 import { estimateTokensRough } from '../lib/text.js'
+import { DEFAULT_THEME } from '../theme.js'
 import type { Msg } from '../types.js'
 
 const ref = <T>(current: T) => ({ current })
@@ -171,6 +172,38 @@ describe('createGatewayEventHandler', () => {
       type: 'status.update'
     } as any)
     expect(getUiState().status).toBe('⏸ goal paused')
+  })
+
+  it('keeps default colors but retains skin branding for non-primary profiles', () => {
+    const onEvent = createGatewayEventHandler(buildCtx([]))
+
+    onEvent({
+      payload: {
+        skin: {
+          banner_logo: 'logo',
+          branding: { prompt_symbol: '§' },
+          colors: { banner_title: '#FF0000' }
+        }
+      },
+      type: 'gateway.ready'
+    } as any)
+
+    expect(getUiState().theme.color.primary).toBe('#FF0000')
+    expect(getUiState().theme.brand.prompt).toBe('§')
+
+    onEvent({ payload: { model: 'gpt-5', profile_name: 'secondary' }, type: 'session.info' } as any)
+
+    expect(getUiState().theme.color.primary).toBe(DEFAULT_THEME.color.primary)
+    expect(getUiState().theme.brand.prompt).toBe('§')
+  })
+
+  it('keeps custom skin colors for the primary profile', () => {
+    const onEvent = createGatewayEventHandler(buildCtx([]))
+
+    onEvent({ payload: { model: 'gpt-5', profile_name: 'default' }, type: 'session.info' } as any)
+    onEvent({ payload: { colors: { banner_title: '#FF0000' } }, type: 'skin.changed' } as any)
+
+    expect(getUiState().theme.color.primary).toBe('#FF0000')
   })
 
   it('surfaces self-improvement review summaries as a persistent system line', () => {

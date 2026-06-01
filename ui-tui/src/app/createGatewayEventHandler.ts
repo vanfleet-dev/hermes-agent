@@ -22,19 +22,25 @@ import { turnController } from './turnController.js'
 import { getUiState, patchUiState } from './uiStore.js'
 
 const NO_PROVIDER_RE = /\bNo (?:LLM|inference) provider configured\b/i
+const PRIMARY_PROFILE_NAME = 'default'
 
 const statusFromBusy = () => (getUiState().busy ? 'running…' : 'ready')
 
+const isPrimaryProfile = (profileName?: null | string) => !profileName || profileName === PRIMARY_PROFILE_NAME
+
+const themeFromSkinForProfile = (skin: GatewaySkin, profileName?: null | string) =>
+  fromSkin(
+    isPrimaryProfile(profileName) ? (skin.colors ?? {}) : {},
+    skin.branding ?? {},
+    skin.banner_logo ?? '',
+    skin.banner_hero ?? '',
+    skin.tool_prefix ?? '',
+    skin.help_header ?? ''
+  )
+
 const applySkin = (s: GatewaySkin) =>
   patchUiState({
-    theme: fromSkin(
-      s.colors ?? {},
-      s.branding ?? {},
-      s.banner_logo ?? '',
-      s.banner_hero ?? '',
-      s.tool_prefix ?? '',
-      s.help_header ?? ''
-    )
+    theme: themeFromSkinForProfile(s, getUiState().info?.profile_name)
   })
 
 const dropBgTask = (taskId: string) =>
@@ -86,6 +92,7 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
   let pendingThinkingStatus = ''
   let thinkingStatusTimer: null | ReturnType<typeof setTimeout> = null
   let startupPromptSubmitted = false
+  let activeSkin: GatewaySkin | null = null
 
   // Inject the disk-save callback into turnController so recordMessageComplete
   // can fire-and-forget a persist without having to plumb a gateway ref around.
@@ -280,6 +287,7 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
 
   const handleReady = (skin?: GatewaySkin) => {
     if (skin) {
+      activeSkin = skin
       applySkin(skin)
     }
 
@@ -382,6 +390,7 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
 
       case 'skin.changed':
         if (ev.payload) {
+          activeSkin = ev.payload
           applySkin(ev.payload)
         }
 
@@ -395,6 +404,10 @@ export function createGatewayEventHandler(ctx: GatewayEventHandlerContext): (ev:
           status: state.status === 'starting agent…' ? 'ready' : state.status,
           usage: info.usage ? { ...state.usage, ...info.usage } : state.usage
         }))
+
+        if (activeSkin) {
+          applySkin(activeSkin)
+        }
 
         setHistoryItems(prev => prev.map(m => (m.kind === 'intro' ? { ...m, info } : m)))
 

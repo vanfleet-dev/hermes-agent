@@ -1,7 +1,7 @@
 import React from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { StatusRule } from '../components/appChrome.js'
+import { formatCodexQuotaCompact, StatusRule } from '../components/appChrome.js'
 import { DEFAULT_THEME } from '../theme.js'
 
 type ReactNodeLike = React.ReactNode
@@ -26,59 +26,57 @@ const textContent = (node: ReactNodeLike): string => {
   return ''
 }
 
-const findClickableWithText = (node: ReactNodeLike, needle: string): React.ReactElement | null => {
-  if (node === null || node === undefined || typeof node === 'boolean') {
-    return null
-  }
-
-  if (Array.isArray(node)) {
-    for (const child of node) {
-      const found = findClickableWithText(child, needle)
-
-      if (found) {
-        return found
-      }
-    }
-
-    return null
-  }
-
-  if (!React.isValidElement(node)) {
-    return null
-  }
-
-  if (typeof node.props.onClick === 'function' && textContent(node).includes(needle)) {
-    return node
-  }
-
-  return findClickableWithText(node.props.children, needle)
-}
-
-describe('StatusRule session count click target', () => {
-  it('makes the live session count itself clickable', () => {
-    const openSwitcher = vi.fn()
+describe('StatusRule', () => {
+  it('hides ready, compression, voice, and session-count segments', () => {
+    const quota = { session_used_percent: 34, state: 'green' as const, weekly_used_percent: 51 }
     const element = StatusRule({
       bgCount: 0,
       busy: false,
-      cols: 100,
+      cols: 140,
       cwdLabel: '~/repo',
-      liveSessionCount: 1,
+      liveSessionCount: 3,
       model: 'kimi-k2.6',
-      onSessionCountClick: openSwitcher,
+      onSessionCountClick: vi.fn(),
+      profileName: 'default',
       sessionStartedAt: null,
       showCost: false,
       status: 'ready',
       statusColor: DEFAULT_THEME.color.ok,
       t: DEFAULT_THEME,
       turnStartedAt: null,
-      usage: { total: 0 },
+      usage: { codex_quota: quota, compressions: 4, total: 0 },
+      voiceLabel: 'voice off'
+    })
+
+    const text = textContent(element)
+
+    expect(text).not.toContain('ready')
+    expect(text).not.toContain('cmp 4')
+    expect(text).not.toContain('voice off')
+    expect(text).not.toContain('3 sessions')
+    expect(text).toContain(formatCodexQuotaCompact(quota))
+  })
+
+  it('hides codex quota for non-primary profiles', () => {
+    const quota = { session_used_percent: 34, state: 'green' as const, weekly_used_percent: 51 }
+    const element = StatusRule({
+      bgCount: 0,
+      busy: false,
+      cols: 140,
+      cwdLabel: '~/repo',
+      liveSessionCount: 0,
+      model: 'kimi-k2.6',
+      profileName: 'secondary',
+      sessionStartedAt: null,
+      showCost: false,
+      status: 'ready',
+      statusColor: DEFAULT_THEME.color.ok,
+      t: DEFAULT_THEME,
+      turnStartedAt: null,
+      usage: { codex_quota: quota, total: 0 },
       voiceLabel: ''
     })
 
-    const clickableSessionCount = findClickableWithText(element, '1 session')
-
-    expect(clickableSessionCount).not.toBeNull()
-    clickableSessionCount!.props.onClick({ stopImmediatePropagation: vi.fn() })
-    expect(openSwitcher).toHaveBeenCalledOnce()
+    expect(textContent(element)).not.toContain(formatCodexQuotaCompact(quota))
   })
 })
