@@ -1,4 +1,4 @@
-import { Box, type ScrollBoxHandle, stringWidth, Text } from '@hermes/ink'
+import { Box, type ScrollBoxHandle, Text } from '@hermes/ink'
 import { useStore } from '@nanostores/react'
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react'
 import unicodeSpinners from 'unicode-animations'
@@ -152,21 +152,10 @@ function ctxBar(pct: number | undefined, w = 10) {
   return '█'.repeat(filled) + '░'.repeat(w - filled)
 }
 
-export function statusRuleWidths(cols: number, cwdLabel: string) {
+export function statusRuleWidths(cols: number) {
   const width = Math.max(1, Math.floor(cols || 1))
-  const desiredSeparatorWidth = width >= 24 ? 3 : 1
-  const minLeftWidth = width >= 24 ? 8 : 1
-  const maxRightWidth = Math.max(0, width - desiredSeparatorWidth - minLeftWidth)
 
-  if (!cwdLabel || maxRightWidth <= 0) {
-    return { leftWidth: width, rightWidth: 0, separatorWidth: 0 }
-  }
-
-  const rightWidth = Math.max(0, Math.min(stringWidth(cwdLabel), maxRightWidth))
-  const separatorWidth = rightWidth > 0 ? desiredSeparatorWidth : 0
-  const leftWidth = Math.max(1, width - separatorWidth - rightWidth)
-
-  return { leftWidth, rightWidth, separatorWidth }
+  return { leftWidth: width, rightWidth: 0, separatorWidth: 0 }
 }
 
 function fmtCodexCooldown(resetAtSeconds: number | undefined, nowMs: number) {
@@ -378,7 +367,6 @@ export function GoodVibesHeart({ tick, t }: { tick: number; t: Theme }) {
 }
 
 export function StatusRule({
-  cwdLabel,
   cols,
   busy,
   status,
@@ -409,7 +397,7 @@ export function StatusRule({
       : ''
 
   const bar = usage.context_max ? ctxBar(pct) : ''
-  const { leftWidth, rightWidth, separatorWidth } = statusRuleWidths(cols, cwdLabel)
+  const { leftWidth } = statusRuleWidths(cols)
 
   return (
     <Box height={1}>
@@ -474,17 +462,6 @@ export function StatusRule({
           </Text>
         ) : null}
       </Box>
-
-      {rightWidth > 0 ? (
-        <>
-          <Text color={t.color.border}>{separatorWidth >= 3 ? ' ─ ' : ' '}</Text>
-          <Box flexShrink={0} width={rightWidth}>
-            <Text color={t.color.label} wrap="truncate-end">
-              {cwdLabel}
-            </Text>
-          </Box>
-        </>
-      ) : null}
     </Box>
   )
 }
@@ -591,7 +568,6 @@ interface StatusRuleProps {
   bgCount: number
   busy: boolean
   cols: number
-  cwdLabel: string
   model: string
   modelFast?: boolean
   modelReasoningEffort?: string

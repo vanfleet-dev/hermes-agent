@@ -1,8 +1,9 @@
 import React from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { formatCodexQuotaCompact, StatusRule } from '../components/appChrome.js'
 import { DEFAULT_THEME } from '../theme.js'
+import type { Usage } from '../types.js'
 
 type ReactNodeLike = React.ReactNode
 
@@ -27,16 +28,15 @@ const textContent = (node: ReactNodeLike): string => {
 }
 
 describe('StatusRule', () => {
-  it('hides ready, compression, voice, and session-count segments', () => {
+  const baseUsage: Usage = { calls: 0, input: 0, output: 0, total: 0 }
+
+  it('hides ready, compression, voice, session-count, and cwd segments', () => {
     const quota = { session_used_percent: 34, state: 'green' as const, weekly_used_percent: 51 }
     const element = StatusRule({
       bgCount: 0,
       busy: false,
       cols: 140,
-      cwdLabel: '~/repo',
-      liveSessionCount: 3,
       model: 'kimi-k2.6',
-      onSessionCountClick: vi.fn(),
       profileName: 'default',
       sessionStartedAt: null,
       showCost: false,
@@ -44,8 +44,7 @@ describe('StatusRule', () => {
       statusColor: DEFAULT_THEME.color.ok,
       t: DEFAULT_THEME,
       turnStartedAt: null,
-      usage: { codex_quota: quota, compressions: 4, total: 0 },
-      voiceLabel: 'voice off'
+      usage: { ...baseUsage, codex_quota: quota, compressions: 4 }
     })
 
     const text = textContent(element)
@@ -54,6 +53,7 @@ describe('StatusRule', () => {
     expect(text).not.toContain('cmp 4')
     expect(text).not.toContain('voice off')
     expect(text).not.toContain('3 sessions')
+    expect(text).not.toContain('~/repo')
     expect(text).toContain(formatCodexQuotaCompact(quota))
   })
 
@@ -63,8 +63,6 @@ describe('StatusRule', () => {
       bgCount: 0,
       busy: false,
       cols: 140,
-      cwdLabel: '~/repo',
-      liveSessionCount: 0,
       model: 'kimi-k2.6',
       profileName: 'secondary',
       sessionStartedAt: null,
@@ -73,8 +71,7 @@ describe('StatusRule', () => {
       statusColor: DEFAULT_THEME.color.ok,
       t: DEFAULT_THEME,
       turnStartedAt: null,
-      usage: { codex_quota: quota, total: 0 },
-      voiceLabel: ''
+      usage: { ...baseUsage, codex_quota: quota }
     })
 
     expect(textContent(element)).not.toContain(formatCodexQuotaCompact(quota))

@@ -359,7 +359,6 @@ const StatusRulePane = memo(function StatusRulePane({
         bgCount={ui.bgTasks.size}
         busy={ui.busy}
         cols={composer.cols}
-        cwdLabel={status.cwdLabel}
         model={ui.info?.model ?? ''}
         modelFast={ui.info?.fast || ui.info?.service_tier === 'priority'}
         modelReasoningEffort={ui.info?.reasoning_effort}
