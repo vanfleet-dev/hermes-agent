@@ -114,6 +114,9 @@ Title: {title}
 Body:
 {body}
 
+Task-shape hint:
+{shape_hint}
+
 Available profiles (assignees you may pick from):
 {roster}
 
@@ -268,6 +271,118 @@ def _normalize_assignee_choice(
     return chosen
 
 
+def _task_text(task: object) -> str:
+    title = getattr(task, "title", "") or ""
+    body = getattr(task, "body", "") or ""
+    return f"{title}\n{body}".lower()
+
+
+def _is_small_concrete_build_task(task: object) -> bool:
+    text = _task_text(task)
+    if not text.strip():
+        return False
+    explicit_research = any(
+        phrase in text
+        for phrase in (
+            "research",
+            "investigate",
+            "compare options",
+            "feasibility",
+            "literature review",
+        )
+    )
+    concrete_build = any(
+        phrase in text
+        for phrase in (
+            "make ",
+            "build ",
+            "implement ",
+            "create ",
+            "write ",
+            "ship ",
+        )
+    )
+    artifact_hint = any(
+        phrase in text
+        for phrase in (
+            "game",
+            "script",
+            "terminal",
+            "cli",
+            "app",
+            "tool",
+            "program",
+            "single file",
+            "single-file",
+            "as few lines as possible",
+            "minimal",
+        )
+    )
+    return concrete_build and artifact_hint and not explicit_research
+
+
+def _shape_hint_for_task(task: object) -> str:
+    if _is_small_concrete_build_task(task):
+        return (
+            "This is a small concrete build request. Prefer a dev-first graph: "
+            "implementation should start immediately, while research is optional "
+            "or advisory rather than a hard prerequisite. Avoid serializing the "
+            "whole board behind broad reconnaissance."
+        )
+    return (
+        "Use ordinary decomposition rules. Add a research prerequisite only when "
+        "the task is genuinely ambiguous, high-risk, or blocked on external facts."
+    )
+
+
+def _role_family(*parts: object) -> str:
+    text = " ".join(str(p or "") for p in parts).lower()
+    if any(tok in text for tok in ("research", "spike", "investigate", "recon")):
+        return "research"
+    if any(tok in text for tok in ("review", "reviewer", "audit", "critique")):
+        return "review"
+    if any(tok in text for tok in ("ops", "runtime", "verify", "verification", "package", "startup")):
+        return "ops"
+    if any(tok in text for tok in ("dev", "engineer", "implement", "build", "code", "fix")):
+        return "dev"
+    return "other"
+
+
+def _relax_small_build_research_gating(task: object, children: list[dict]) -> list[dict]:
+    if not _is_small_concrete_build_task(task) or len(children) < 2:
+        return children
+    research_idxs = {
+        idx
+        for idx, child in enumerate(children)
+        if _role_family(child.get("assignee"), child.get("title"), child.get("body")) == "research"
+    }
+    if not research_idxs:
+        return children
+    dev_idxs = {
+        idx
+        for idx, child in enumerate(children)
+        if _role_family(child.get("assignee"), child.get("title"), child.get("body")) == "dev"
+    }
+    if not dev_idxs:
+        return children
+
+    rewritten: list[dict] = []
+    changed = False
+    for child in children:
+        parents = list(child.get("parents") or [])
+        family = _role_family(child.get("assignee"), child.get("title"), child.get("body"))
+        if family in {"dev", "ops", "review"} and any(p in research_idxs for p in parents):
+            new_parents = [p for p in parents if p not in research_idxs]
+            if family in {"ops", "review"} and not any(p in dev_idxs for p in new_parents):
+                new_parents.extend(sorted(dev_idxs))
+                new_parents = sorted(set(new_parents))
+            if new_parents != parents:
+                child = {**child, "parents": new_parents}
+                changed = True
+        rewritten.append(child)
+    return rewritten if changed else children
+
+
 def decompose_task(
     task_id: str,
     *,
@@ -319,6 +434,7 @@ def decompose_task(
         task_id=task.id,
         title=_truncate(task.title or "", 400),
         body=_truncate(task.body or "(no body)", 4000),
+        shape_hint=_shape_hint_for_task(task),
         roster=_format_roster(roster),
         default_assignee=default_assignee,
     )
@@ -437,6 +553,8 @@ def decompose_task(
             "assignee": chosen,
             "parents": clean_parents,
         })
+
+    children = _relax_small_build_research_gating(task, children)
 
     try:
         with kb.connect_closing() as conn:

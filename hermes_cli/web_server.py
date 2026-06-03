@@ -52,6 +52,7 @@ from hermes_cli.config import (
     redact_key,
 )
 from gateway.status import get_running_pid, read_runtime_status
+from session_runtime_inventory import canonical_active_sessions, list_operator_active_sessions
 from utils import env_var_enabled
 
 try:
@@ -704,12 +705,13 @@ async def get_status():
         from hermes_state import SessionDB
         db = SessionDB()
         try:
-            sessions = db.list_sessions_rich(limit=50)
-            now = time.time()
-            active_sessions = sum(
-                1 for s in sessions
-                if s.get("ended_at") is None
-                and (now - s.get("last_active", s.get("started_at", 0))) < 300
+            active_sessions = len(
+                canonical_active_sessions(
+                    db=db,
+                    operator_rows=list_operator_active_sessions(hermes_home=get_hermes_home()),
+                    live_gateway_sessions=[],
+                    current_session_id="",
+                )
             )
         finally:
             db.close()

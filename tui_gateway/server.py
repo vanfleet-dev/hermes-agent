@@ -18,6 +18,10 @@ from typing import Any, Optional
 
 from hermes_constants import get_hermes_home
 from hermes_cli.env_loader import load_hermes_dotenv
+from session_runtime_inventory import (
+    canonical_active_sessions,
+    list_operator_active_sessions as _list_operator_active_sessions,
+)
 from agent.account_usage import codex_quota_summary, fetch_account_usage
 from utils import is_truthy_value
 from tui_gateway.transport import (
@@ -3154,11 +3158,11 @@ def _fallback_session_info(session: dict) -> dict:
 
 @method("session.active_list")
 def _(rid, params: dict) -> dict:
-    """Return live TUI sessions in this gateway process.
+    """Return the canonical live active-session inventory.
 
-    Unlike ``session.list`` this is not a historical DB browser: it reports only
-    sessions with in-memory agents/workers that the current TUI can switch to
-    without closing siblings.
+    This merges process-backed operator sessions (CLI / Herm TUI) with any
+    gateway-local live sessions so every consumer sees the same live-session
+    contract.
     """
     current = str(params.get("current_session_id") or "")
     try:
@@ -3166,10 +3170,17 @@ def _(rid, params: dict) -> dict:
     except Exception as e:
         return _err(rid, 5036, f"could not enumerate active sessions: {e}")
 
-    # Keep the natural creation/insertion order from ``_sessions``.  The
-    # frontend marks the focused session with ``current``; it should not jump to
-    # the top just because the user switched to it.
-    rows = [_session_live_item(sid, session, current) for sid, session in snapshot]
+    try:
+        operator_rows = _list_operator_active_sessions(hermes_home=_hermes_home)
+        gateway_rows = [_session_live_item(sid, session, current) for sid, session in snapshot]
+        rows = canonical_active_sessions(
+            db=_get_db(),
+            operator_rows=operator_rows,
+            live_gateway_sessions=gateway_rows,
+            current_session_id=current,
+        )
+    except Exception as e:
+        return _err(rid, 5036, f"could not build active session inventory: {e}")
     return _ok(rid, {"sessions": rows})
 
 

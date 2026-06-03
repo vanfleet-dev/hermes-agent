@@ -4113,14 +4113,113 @@ def test_prompt_submit_preserves_empty_response_without_error(monkeypatch):
 # ── active live TUI sessions ─────────────────────────────────────────
 
 
+def test_session_active_list_includes_live_operator_sessions_outside_gateway_memory(monkeypatch):
+    """session.active_list must report real live operator sessions, not only _sessions.
+
+    Herm's dashboard-first shell can keep a session open in a separate CLI/TUI
+    process tree while the gateway's in-memory ``_sessions`` dict is empty for
+    that session. The RPC should still surface that live session from the
+    runtime inventory, deduped by session id and enriched from state.db.
+    """
+
+    class _DB:
+        def list_sessions_rich(self, limit=200, offset=0, min_message_count=0):
+            return [{
+                "id": "sid-proc",
+                "title": "Local CLI",
+                "message_count": 4,
+                "started_at": 100.0,
+                "last_active": 190.0,
+                "model": "gpt-5.4",
+                "source": "cli",
+                "ended_at": None,
+                "lastMessage": "hello from disk",
+            }]
+
+    def _fake_proc_rows(*_args, **_kwargs):
+        return [
+            {
+                "session_id": "sid-proc",
+                "session_key": "sid-proc",
+                "started_at": 100.0,
+                "last_active": 200.0,
+                "source": "cli",
+                "model": "gpt-5.4",
+                "status": "idle",
+            },
+            # Duplicate process for the same session id — inventory should
+            # collapse this to one row.
+            {
+                "session_id": "sid-proc",
+                "session_key": "sid-proc",
+                "started_at": 100.0,
+                "last_active": 201.0,
+                "source": "cli",
+                "model": "gpt-5.4",
+                "status": "idle",
+            },
+        ]
+
+    previous_sessions = dict(server._sessions)
+    server._sessions.clear()
+    monkeypatch.setattr(server, "_get_db", lambda: _DB())
+    monkeypatch.setattr(server, "_list_operator_active_sessions", _fake_proc_rows, raising=False)
+    try:
+        resp = server.handle_request(
+            {
+                "id": "proc",
+                "method": "session.active_list",
+                "params": {},
+            }
+        )
+    finally:
+        server._sessions.clear()
+        server._sessions.update(previous_sessions)
+
+    assert resp is not None
+    session_rows = resp["result"]["sessions"]
+    assert [row["id"] for row in session_rows] == ["sid-proc"]
+    assert session_rows[0]["title"] == "Local CLI"
+    assert session_rows[0]["preview"] == "hello from disk"
+    assert session_rows[0]["message_count"] == 4
+    assert session_rows[0]["status"] == "idle"
+
+
 def test_session_active_list_reports_live_sessions(monkeypatch):
     class _DB:
         def get_session_title(self, key):
             return {"key-a": "Research", "key-b": "Implement"}.get(key, "")
 
+        def list_sessions_rich(self, limit=200, offset=0, min_message_count=0):
+            return [
+                {
+                    "id": "sid-a",
+                    "title": "Research",
+                    "message_count": 1,
+                    "started_at": 10.0,
+                    "last_active": 20.0,
+                    "model": "model-a",
+                    "source": "cli",
+                    "ended_at": None,
+                    "lastMessage": "find docs",
+                },
+                {
+                    "id": "sid-b",
+                    "title": "Implement",
+                    "message_count": 1,
+                    "started_at": 11.0,
+                    "last_active": 30.0,
+                    "model": "model-b",
+                    "source": "cli",
+                    "ended_at": None,
+                    "lastMessage": "writing code",
+                },
+            ]
+
     previous_sessions = dict(server._sessions)
     server._sessions.clear()
     monkeypatch.setattr(server, "_get_db", lambda: _DB())
+    monkeypatch.setattr(server, "_list_operator_active_sessions", lambda *args, **kwargs: [])
     server._sessions["sid-a"] = _session(
         agent=types.SimpleNamespace(model="model-a"),
         history=[{"role": "user", "content": "find docs"}],

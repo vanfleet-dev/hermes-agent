@@ -345,3 +345,110 @@ def test_decompose_no_aux_client_configured(kanban_home):
 
     assert outcome.ok is False
     assert "no auxiliary client" in outcome.reason
+
+
+def test_small_concrete_build_relaxes_research_gate(kanban_home):
+    with kb.connect() as conn:
+        tid = kb.create_task(
+            conn,
+            title="make asteroids the game with a synthwave vibe",
+            body="playable in the terminal in as few lines as possible",
+            triage=True,
+        )
+
+    llm_payload = jsonlib.dumps({
+        "fanout": True,
+        "rationale": "test split",
+        "tasks": [
+            {"title": "Research terminal game patterns", "body": "survey options", "assignee": "sw-researcher-a", "parents": []},
+            {"title": "Implement the game", "body": "build the artifact", "assignee": "sw-dev-a", "parents": [0]},
+            {"title": "Verify runtime", "body": "check startup", "assignee": "sw-ops-a", "parents": [0, 1]},
+            {"title": "Review requirements", "body": "assess readiness", "assignee": "sw-reviewer-a", "parents": [0, 1]},
+        ],
+    })
+
+    patches = _patch_list_profiles([
+        "sw-orchestrator",
+        "sw-researcher-a",
+        "sw-dev-a",
+        "sw-ops-a",
+        "sw-reviewer-a",
+    ])
+    for p in patches:
+        p.start()
+    try:
+        with _patch_aux_client(llm_payload), _patch_extra_body(), patch(
+            "hermes_cli.kanban_decompose._load_config",
+            return_value={
+                "kanban": {
+                    "orchestrator_profile": "sw-orchestrator",
+                    "default_assignee": "sw-dev-a",
+                }
+            },
+        ):
+            outcome = decomp.decompose_task(tid, author="me")
+    finally:
+        for p in patches:
+            p.stop()
+
+    assert outcome.ok, outcome.reason
+    assert outcome.child_ids and len(outcome.child_ids) == 4
+    with kb.connect() as conn:
+        child_ids = list(outcome.child_ids or [])
+        children = [kb.get_task(conn, cid) for cid in child_ids]
+        parent_map = {
+            child.id: kb.parent_ids(conn, child.id)
+            for child in children if child is not None
+        }
+    by_assignee = {child.assignee: child.id for child in children if child is not None}
+    assert parent_map[by_assignee["sw-dev-a"]] == []
+    assert parent_map[by_assignee["sw-ops-a"]] == [by_assignee["sw-dev-a"]]
+    assert parent_map[by_assignee["sw-reviewer-a"]] == [by_assignee["sw-dev-a"]]
+
+
+def test_explicit_research_task_keeps_research_dependency(kanban_home):
+    with kb.connect() as conn:
+        tid = kb.create_task(
+            conn,
+            title="research terminal rendering approaches for a future game",
+            body="compare options before implementation",
+            triage=True,
+        )
+
+    llm_payload = jsonlib.dumps({
+        "fanout": True,
+        "rationale": "research first",
+        "tasks": [
+            {"title": "Research terminal game patterns", "body": "survey options", "assignee": "sw-researcher-a", "parents": []},
+            {"title": "Implement the game", "body": "build the artifact", "assignee": "sw-dev-a", "parents": [0]},
+        ],
+    })
+
+    patches = _patch_list_profiles(["sw-orchestrator", "sw-researcher-a", "sw-dev-a"])
+    for p in patches:
+        p.start()
+    try:
+        with _patch_aux_client(llm_payload), _patch_extra_body(), patch(
+            "hermes_cli.kanban_decompose._load_config",
+            return_value={
+                "kanban": {
+                    "orchestrator_profile": "sw-orchestrator",
+                    "default_assignee": "sw-dev-a",
+                }
+            },
+        ):
+            outcome = decomp.decompose_task(tid, author="me")
+    finally:
+        for p in patches:
+            p.stop()
+
+    assert outcome.ok, outcome.reason
+    with kb.connect() as conn:
+        child_ids = list(outcome.child_ids or [])
+        children = [kb.get_task(conn, cid) for cid in child_ids]
+        parent_map = {
+            child.id: kb.parent_ids(conn, child.id)
+            for child in children if child is not None
+        }
+    by_assignee = {child.assignee: child.id for child in children if child is not None}
+    assert parent_map[by_assignee["sw-dev-a"]] == [by_assignee["sw-researcher-a"]]
